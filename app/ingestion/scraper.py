@@ -23,7 +23,18 @@ logger = logging.getLogger(__name__)
 # -------------------------
 def fetch_html(url: str, timeout: int = 15) -> str:
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; NewsCrawler/1.0)"
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,"
+        "application/xml;q=0.9,image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Referer": "https://www.google.com/",
     }
 
     with httpx.Client(
@@ -136,25 +147,88 @@ async def scrape_all_sources() -> list[dict]:
 
     for source in sources:
         logger.info("Scraping source: %s", source["name"])
-        strategy = source.get("fetch_strategy", "httpx")
-        if strategy == "trafilatura":
-            html = trafilatura.fetch_url(source["url"])
-        else:
-            html = fetch_html(source["url"])
 
-        article_urls = discover_article_urls(
-            html,
-            source["url"],
-            source["article_url_patterns"],
-        )
+        try:
+            strategy = source.get("fetch_strategy", "httpx")
 
-        for url in article_urls:
-            article = extract_article(url)
-            if not article:
+            if strategy == "trafilatura":
+                html = trafilatura.fetch_url(source["url"])
+            else:
+                html = fetch_html(source["url"])
+
+            if not html:
+                logger.warning(
+                    "No HTML returned",
+                    source=source["name"],
+                    url=source["url"],
+                )
                 continue
-            article["name"] = source["name"]
-            article["country"] = source["country"]
-            article["credibility_score"] = 0  
-            all_articles.append(article)
+
+            article_urls = discover_article_urls(
+                html,
+                source["url"],
+                source["article_url_patterns"],
+            )
+
+        except Exception as e:
+            logger.error(
+                "Source scrape failed",
+                source=source["name"],
+                url=source["url"],
+                error=str(e),
+                exc_info=True,
+            )
+            continue  # 🔑 move to next source
+
+        # ---- article loop ----
+        for url in article_urls:
+            try:
+                article = extract_article(url)
+                if not article:
+                    continue
+
+                article["name"] = source["name"]
+                article["country"] = source["country"]
+                article["credibility_score"] = 0
+
+                all_articles.append(article)
+
+            except Exception as e:
+                logger.warning(
+                    "Article extraction failed",
+                    source=source["name"],
+                    url=url,
+                    error=str(e),
+                )
+                continue
 
     return all_articles
+
+# async def scrape_all_sources() -> list[dict]:
+#     sources = load_sources()
+#     all_articles: list[dict] = []
+
+#     for source in sources:
+#         logger.info("Scraping source: %s", source["name"])
+#         strategy = source.get("fetch_strategy", "httpx")
+#         if strategy == "trafilatura":
+#             html = trafilatura.fetch_url(source["url"])
+#         else:
+#             html = fetch_html(source["url"])
+
+#         article_urls = discover_article_urls(
+#             html,
+#             source["url"],
+#             source["article_url_patterns"],
+#         )
+
+#         for url in article_urls:
+#             article = extract_article(url)
+#             if not article:
+#                 continue
+#             article["name"] = source["name"]
+#             article["country"] = source["country"]
+#             article["credibility_score"] = 0  
+#             all_articles.append(article)
+
+#     return all_articles

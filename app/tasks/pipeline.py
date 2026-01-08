@@ -38,6 +38,10 @@ def process_article(article_id: int):
             ))
         db.commit()
         return cluster_id
+    except Exception as e:
+        db.rollback()
+        print("PROCESSING ARTICLE ERROR:", repr(e))
+        raise
     finally:
         db.close()
 
@@ -59,7 +63,10 @@ def evaluate_cluster(cluster_id: int):
         )
         print("claims ===>", len(claims))
         if len(claims) < 2:
-            log.info("cluster_skipped_insufficient_claims", cluster_id=cluster_id)
+            db.query(ClaimSupport).filter(
+                ClaimSupport.cluster_id == cluster_id
+            ).delete(synchronize_session=False)
+            db.commit()
             return
         
         db.query(ClaimSupport).filter(
@@ -103,8 +110,8 @@ def evaluate_cluster(cluster_id: int):
             else:
                 truth_claim_ids.update(c.id for c in contradicting)
                 save_supports(db, cluster_id, contradicting, "contradicting")
-
-        update_article_credibility(db, truth_claim_ids)
+        print(f"truth_claims {cluster_id}", truth_claim_ids)
+        update_article_credibility(db, cluster_id, truth_claim_ids)
         
         db.commit()
         #  Uses YOUR logic
@@ -141,6 +148,7 @@ async def run_pipeline_async():
         return
 
     article_ids = save_articles(articles)
+    print("article ids===>", article_ids)
     log.info("articles_saved", count=len(article_ids))
 
     touched_clusters: set[int] = set()

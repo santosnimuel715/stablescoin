@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from db.session import SessionLocal
 from db.models import Article
+from sqlalchemy import select
 
 def save_articles(articles: list[dict]) -> list[int]:
     db = SessionLocal()
@@ -27,6 +28,14 @@ def save_articles(articles: list[dict]) -> list[int]:
                 saved_ids.append(article.id)
             except IntegrityError:
                 db.rollback()  # already exists, skip
+                                # 🔑 fetch existing article
+                # existing = db.execute(
+                #     select(Article).where(Article.url == a["url"])
+                # ).scalar_one_or_none()
+
+                # if existing:
+                #     saved_ids.append(existing.id)
+
 
     finally:
         db.close()
