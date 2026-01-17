@@ -10,24 +10,29 @@ def save_articles(articles: list[dict]) -> list[int]:
 
     try:
         for a in articles:
-            article = Article(
-                title=a["title"],
-                content=a["content"],
-                url=a["url"],
-                publish_date=datetime.fromisoformat(a["publish_date"])
-                if a.get("publish_date") else None,
-                source=a["name"],
-                country=a["country"],
-                credibility_score=a["credibility_score"],
-            )
+            if a["image_url"]:
+                article = Article(
+                    title=a["title"],
+                    content=a["content"],
+                    url=a["url"],
+                    publish_date=datetime.fromisoformat(a["publish_date"])
+                    if a.get("publish_date") else None,
+                    source=a["name"],
+                    country=a["country"],
+                    credibility_score=a["credibility_score"],
+                    image_url = a["image_url"]
+                )
 
-            db.add(article)
+                db.add(article)
+            else:
+                continue
             try:
                 db.commit()
                 db.refresh(article)
                 saved_ids.append(article.id)
             except IntegrityError:
-                db.rollback()  # already exists, skip
+                db.rollback()
+                # already exists, skip
                                 # 🔑 fetch existing article
                 # existing = db.execute(
                 #     select(Article).where(Article.url == a["url"])

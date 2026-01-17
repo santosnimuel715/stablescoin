@@ -1,7 +1,7 @@
 import asyncio
 from ingestion.scraper import scrape_all_sources
 from ml.embeddings import embed
-from ml.claim_extraction import extract_claims
+from ml.claim_extraction import extract_claims, analyze_article
 from ml.claim_comparison import compare_claims, semantic_group_claims, classify_group, save_supports, update_article_credibility
 from ml.truth_engine import evaluate_truth
 from core.logging import log
@@ -23,12 +23,22 @@ def process_article(article_id: int):
     try:
         article = db.get(Article, article_id)
 
+        if not article:
+            raise ValueError(f"Article {article_id} not found")
+
+        analysis = analyze_article(article.title, article.content)
+        # ---- Assign article fields ----
+        article.priority = analysis["priority"]
+        article.category = analysis["category"]
+        article.jp_title = analysis["ja"]["title"]
+        article.jp_content = analysis["ja"]["content"]
         embedding = embed(article.content)
         index = get_cluster_index()
 
         cluster_id = assign_topic_cluster(article, embedding, index, db)
 
-        claims_data = extract_claims(article.content)
+        # claims_data = extract_claims(article.content)
+        claims_data = analysis.get("claims", [])
         for c in claims_data:
             db.add(Claim(
                 article_id=article.id,
@@ -185,18 +195,25 @@ async def run_pipeline_async():
     )   
     
 
-def run_pipeline():
-    """
-    Synchronous entry point for schedulers / workers.
-    Safely executes async pipeline.
-    """
-    try:
-        asyncio.run(run_pipeline_async())
-    except RuntimeError as e:
-        # Handles case where an event loop already exists (rare but possible)
-        log.warning("event_loop_exists_fallback", error=str(e))
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(run_pipeline_async())
+# def run_pipeline():
+#     """
+#     Synchronous entry point for schedulers / workers.
+#     Safely executes async pipeline.
+#     """
+#     try:
+#         asyncio.run(run_pipeline_async())
+#     except RuntimeError as e:
+#         # Handles case where an event loop already exists (rare but possible)
+#         log.warning("event_loop_exists_fallback", error=str(e))
+#         loop = asyncio.get_event_loop()
+#         loop.run_until_complete(run_pipeline_async())
     
 
 
+def run_pipeline():
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(run_pipeline_async())
+    else:
+        asyncio.create_task(run_pipeline_async())

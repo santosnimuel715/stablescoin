@@ -60,3 +60,28 @@ Render will provide a live URL:
 https://your-service-name.onrender.com
 
 Here is my github username: honeydev783
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1_9
+Yuri Postgresql
+CREATE DATABASE mydb;
+CREATE USER admin WITH PASSWORD 'password123!!!';
+GRANT ALL PRIVILEGES ON DATABASE mydb TO admin; 
+
+DATABASE_URL=postgresql+psycopg2://admin:password123!!!@72.62.197.196:5432/mydb
+
+GRANT USAGE, CREATE ON SCHEMA public TO admin;
+
+nano /etc/postgresql/15/main/pg_hba.conf
