@@ -150,30 +150,30 @@ def evaluate_cluster(cluster_id: int):
         db.close()
         
 async def run_pipeline_async():
-    log.info("pipeline_started")
+    # log.info("pipeline_started")
 
-    articles = await scrape_all_sources()
-    if not articles:
-        log.info("pipeline_no_articles")
-        return
+    # articles = await scrape_all_sources()
+    # if not articles:
+    #     log.info("pipeline_no_articles")
+    #     return
 
-    article_ids = save_articles(articles)
-    print("article ids===>", article_ids)
-    log.info("articles_saved", count=len(article_ids))
+    # article_ids = save_articles(articles)
+    # print("article ids===>", article_ids)
+    # log.info("articles_saved", count=len(article_ids))
 
-    touched_clusters: set[int] = set()
+    # touched_clusters: set[int] = set()
     
-    for article_id in article_ids:
-        try:
-            log.info("processing_article_started", article_id=article_id)
-            cluster_id = process_article(article_id)
-            touched_clusters.add(cluster_id)
-        except Exception as e:
-            log.error(
-                "article_processing_failed",
-                article_id=article_id,
-                error=str(e)
-            )
+    # for article_id in article_ids:
+    #     try:
+    #         log.info("processing_article_started", article_id=article_id)
+    #         cluster_id = process_article(article_id)
+    #         touched_clusters.add(cluster_id)
+    #     except Exception as e:
+    #         log.error(
+    #             "article_processing_failed",
+    #             article_id=article_id,
+    #             error=str(e)
+    #         )
             
     cluster_ids = get_all_cluster_ids()
     

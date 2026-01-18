@@ -6,6 +6,8 @@ from core.logging import init_logging
 from db.init_db import init_db
 from dotenv import load_dotenv
 from ml.embeddings import load_embedding_model
+from fastapi.middleware.cors import CORSMiddleware
+
 load_dotenv()
 def create_app() -> FastAPI:
     init_logging()
@@ -14,7 +16,20 @@ def create_app() -> FastAPI:
         title="Blockchain Truth Engine",
         version="1.0.0"
     )
+    
+    origins = [
+        "http://localhost:3000",  # your Next.js frontend
+        # you can add more allowed origins like your production URL
+        "https://difines.shop",
+    ]
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,  # allows requests from these domains
+        allow_credentials=True,
+        allow_methods=["*"],    # GET, POST, PUT, DELETE
+        allow_headers=["*"],    # allow all headers
+    )
     # API Routes
     app.include_router(truth.router, prefix="/truth", tags=["Truth"])
     app.include_router(articles.router, tags=["Articles"])
