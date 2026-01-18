@@ -18,9 +18,7 @@ def create_app() -> FastAPI:
     )
     
     origins = [
-        "http://localhost:3000",  # your Next.js frontend
-        # you can add more allowed origins like your production URL
-        "https://difines.shop",
+        "*",  # your Next.js frontend
     ]
 
     app.add_middleware(
