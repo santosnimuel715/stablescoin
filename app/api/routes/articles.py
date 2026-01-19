@@ -177,7 +177,7 @@ def get_articles(
     page_size: int = 10,
     db: Session = Depends(get_db),
 ):
-    query = db.query(Article).filter(Article.credibility_score >= 0)
+    query = db.query(Article).filter(Article.credibility_score > 0)
 
     if category:
         query = query.filter(func.lower(Article.category) == category.lower())
