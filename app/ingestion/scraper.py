@@ -11,7 +11,7 @@ import trafilatura
 
 from ingestion.sources import load_sources
 from playwright.async_api import async_playwright
-
+from api.routes.articles import generate_slug
 
 # -------------------------
 # Logging
@@ -129,19 +129,54 @@ def discover_article_urls(html: str, base_url: str, patterns: list[str]) -> list
 # -------------------------
 # Normalize publish dates
 # -------------------------
+# def normalize_date(raw_date: str | None) -> datetime | None:
+#     if not raw_date:
+#         return None
+
+#     raw = raw_date.lower().strip()
+#     now = datetime.utcnow()
+
+#     match = re.search(r"(\d+)\s*(minute|min|hour|day|week|month)s?\s*ago", raw)
+#     if match:
+#         value = int(match.group(1))
+#         unit = match.group(2)
+
+#         if unit.startswith("min"):
+#             return now - timedelta(minutes=value)
+#         if unit.startswith("hour"):
+#             return now - timedelta(hours=value)
+#         if unit.startswith("day"):
+#             return now - timedelta(days=value)
+#         if unit.startswith("week"):
+#             return now - timedelta(weeks=value)
+#         if unit.startswith("month"):
+#             return now - timedelta(days=value * 30)
+
+#     try:
+#         return date_parser.parse(raw, fuzzy=True)
+#     except Exception:
+#         return None
+
 def normalize_date(raw_date: str | None) -> datetime | None:
     if not raw_date:
         return None
 
     raw = raw_date.lower().strip()
-    now = datetime.utcnow()
+    now = datetime.utcnow().replace(microsecond=0)
 
-    match = re.search(r"(\d+)\s*(minute|min|hour|day|week|month)s?\s*ago", raw)
+    # Relative time
+    match = re.search(
+        r"(\d+)\s*(second|sec|minute|min|hour|day|week|month|year)s?\s*ago",
+        raw
+    )
+
     if match:
         value = int(match.group(1))
         unit = match.group(2)
 
-        if unit.startswith("min"):
+        if unit.startswith(("sec", "second")):
+            return now - timedelta(seconds=value)
+        if unit.startswith(("min", "minute")):
             return now - timedelta(minutes=value)
         if unit.startswith("hour"):
             return now - timedelta(hours=value)
@@ -151,9 +186,14 @@ def normalize_date(raw_date: str | None) -> datetime | None:
             return now - timedelta(weeks=value)
         if unit.startswith("month"):
             return now - timedelta(days=value * 30)
+        if unit.startswith("year"):
+            return now - timedelta(days=value * 365)
 
+    # Absolute date
     try:
-        return date_parser.parse(raw, fuzzy=True)
+        # IMPORTANT: inject time if missing
+        dt = date_parser.parse(raw, fuzzy=True, default=now)
+        return dt.replace(microsecond=0)
     except Exception:
         return None
     
@@ -388,6 +428,7 @@ async def scrape_all_sources() -> list[dict]:
                 article["country"] = source["country"]
                 article["credibility_score"] = 0
                 article["image_url"] = image_url
+                
                 all_articles.append(article)
 
             except Exception as e:

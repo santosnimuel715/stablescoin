@@ -10,6 +10,8 @@ class ArticleOut(BaseModel):
     slug: str
     date: str
     source: str
+    url: str
+    summary: str
     class Config:
         from_attributes  = True
 

@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from db.session import SessionLocal
 from db.models import Article
 from sqlalchemy import select
-
+from api.routes.articles import generate_slug
 def save_articles(articles: list[dict]) -> list[int]:
     db = SessionLocal()
     saved_ids: list[int] = []
@@ -20,7 +20,8 @@ def save_articles(articles: list[dict]) -> list[int]:
                     source=a["name"],
                     country=a["country"],
                     credibility_score=a["credibility_score"],
-                    image_url = a["image_url"]
+                    image_url = a["image_url"],
+                    slug = generate_slug(a["url"], a["title"])
                 )
 
                 db.add(article)

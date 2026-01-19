@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from db.models import Article
@@ -9,6 +9,19 @@ from typing import List, Optional
 
 
 router = APIRouter()
+
+def serialize_article(a: Article):
+    return {
+        "id": a.id,
+        "title": a.title,
+        "excerpt": a.summary or a.content[:200],
+        "slug": a.slug,
+        "image": a.image_url,
+        "url": a.url,
+        "source": a.source,
+        "summary": a.summary,
+        "credibility_score": a.credibility_score,
+    }
 
 def generate_slug(url: str, title: str) -> str:
     """
@@ -42,14 +55,16 @@ def map_article(article: Article, locale: str) -> ArticleOut:
         else article.content or ""
     )
 
-    slug = generate_slug(article.url, title)
+    # slug = generate_slug(article.url, title)
 
     return ArticleOut(
         id=article.id,
         title=title,
         excerpt=content,
+        url= article.url,
         image=article.image_url or "",
-        slug=slug,
+        slug=article.slug,
+        summary= article.summary,
         date=article.publish_date.strftime("%d %b %Y %H:%M"),
         source = article.source
     )
@@ -59,19 +74,35 @@ def get_home_articles(
     locale: str = Query("en", regex="^(en|ja)$"),
     db: Session = Depends(get_db),
 ):
+    # Step 1: newest article per slug
+    subquery = (
+        db.query(
+            Article.slug,
+            func.max(Article.publish_date).label("max_publish_date"),
+        )
+        .filter(Article.credibility_score >= 0.3)
+        .group_by(Article.slug)
+        .subquery()
+    )
+
+    # Step 2: join back & sort globally
     articles = (
         db.query(Article)
-        .filter(Article.credibility_score >= 0.3)
+        .join(
+            subquery,
+            (Article.slug == subquery.c.slug)
+            & (Article.publish_date == subquery.c.max_publish_date),
+        )
         .order_by(
-            Article.credibility_score.desc(),
             Article.publish_date.desc(),
+            Article.credibility_score.desc(),
         )
         .limit(15)
         .all()
     )
 
     if not articles:
-        raise ValueError("No articles found")
+        raise HTTPException(status_code=404, detail="No articles found")
 
     mapped = [map_article(a, locale) for a in articles]
 
@@ -79,9 +110,8 @@ def get_home_articles(
         featuredArticle=mapped[0],
         sideArticles=mapped[1:6],
         storyCards=mapped[6:8],
-        articleListItems=mapped[8:],
+        articleListItems=mapped[8:15],
     )
-
 
 @router.get("/articles/counts")
 def get_article_counts(db: Session = Depends(get_db)):
@@ -138,7 +168,7 @@ def get_articles(
 ):
     query = (
         db.query(Article)
-        .filter(Article.credibility_score > 0)
+        .filter(Article.credibility_score >= 0)
     )
 
     if category:
@@ -164,9 +194,11 @@ def get_articles(
         "items": [
             {   
                 "id": a.id,
-                "slug": generate_slug(a.url, a.title),
+                "slug": a.slug,
                 "title": a.title,
                 "excerpt": a.content,
+                "url": a.url,
+                "summary": a.summary,
                 "image": a.image_url,
                 "date": a.publish_date.strftime("%d %b %Y %H:%M"),
                 "source": a.source,
@@ -207,13 +239,91 @@ def get_featured_article(
 
     return {
         "id": article.id,
-        "slug": generate_slug(article.url, article.content),
+        "slug": article.slug,
+        "url": article.url,
         "title": article.title,
         "excerpt": article.content,
+        "summary": article.summary,
         "image": article.image_url,
         "date": article.publish_date.strftime("%d %b %Y %H:%M"),
         "source": article.source,
     }
+
+@router.get(
+    "/articles/{slug}/cluster-related",
+    response_model=list[ArticleOut],
+)
+def get_cluster_related_articles(
+    slug: str,
+    db: Session = Depends(get_db),
+):
+    base = (
+        db.query(Article)
+        .filter(Article.slug == slug)
+        .filter(Article.credibility_score.isnot(None))
+        .first()
+    )
+
+    if not base:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    base_score = base.credibility_score
+    results: list[Article] = []
+
+    # 1️⃣ SAME CLUSTER
+    if base.topic_cluster_id:
+        results = (
+            db.query(Article)
+            .filter(Article.topic_cluster_id == base.topic_cluster_id)
+            .filter(Article.id != base.id)
+            .filter(Article.credibility_score.isnot(None))
+            .order_by(func.abs(Article.credibility_score - base_score))
+            .limit(2)
+            .all()
+        )
+
+    # 2️⃣ SAME CATEGORY (fallback)
+    if len(results) < 2 and base.category:
+        needed = 2 - len(results)
+        results.extend(
+            db.query(Article)
+            .filter(Article.category == base.category)
+            .filter(Article.id != base.id)
+            .filter(Article.credibility_score.isnot(None))
+            .order_by(func.abs(Article.credibility_score - base_score))
+            .limit(needed)
+            .all()
+        )
+
+    # 3️⃣ DIFFERENT COUNTRY (fallback)
+    if len(results) < 2 and base.country:
+        needed = 2 - len(results)
+        results.extend(
+            db.query(Article)
+            .filter(Article.country != base.country)
+            .filter(Article.id != base.id)
+            .filter(Article.credibility_score.isnot(None))
+            .order_by(func.abs(Article.credibility_score - base_score))
+            .limit(needed)
+            .all()
+        )
+
+    # 4️⃣ GLOBAL (last meaningful fallback)
+    if len(results) < 2:
+        needed = 2 - len(results)
+        results.extend(
+            db.query(Article)
+            .filter(Article.id != base.id)
+            .filter(Article.credibility_score.isnot(None))
+            .order_by(func.abs(Article.credibility_score - base_score))
+            .limit(needed)
+            .all()
+        )
+
+    # Deduplicate just in case
+    unique = {a.id: a for a in results}.values()
+
+    return [serialize_article(a) for a in unique]
     
 @router.get("/article/latest")
 def latest(db: Session = Depends(get_db)):
